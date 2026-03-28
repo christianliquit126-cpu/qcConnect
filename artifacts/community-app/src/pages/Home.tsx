@@ -1,9 +1,15 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import HeroSection from "@/components/HeroSection";
 import QuickActions from "@/components/QuickActions";
 import CommunityFeed from "@/components/CommunityFeed";
 import CommunityUpdates from "@/components/CommunityUpdates";
 import CategoryBrowser from "@/components/CategoryBrowser";
+import { useRecentUsers } from "@/hooks/useCommunityData";
+import { useChats } from "@/hooks/useChat";
+import { useAuth } from "@/contexts/AuthContext";
+import { MessageSquare, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -18,13 +24,16 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-            <CategoryBrowser onCategorySelect={setSelectedCategory} selected={selectedCategory === "All" ? undefined : selectedCategory} />
+            <CategoryBrowser
+              onCategorySelect={setSelectedCategory}
+              selected={selectedCategory === "All" ? undefined : selectedCategory}
+            />
             <CommunityFeed searchQuery={searchQuery} categoryFilter={selectedCategory} />
           </div>
 
           <div className="space-y-6">
             <CommunityUpdates />
-            <ActiveVolunteers />
+            <RecentMembers />
           </div>
         </div>
       </div>
@@ -32,34 +41,61 @@ export default function Home() {
   );
 }
 
-function ActiveVolunteers() {
-  const volunteers = [
-    { name: "Maria Santos", role: "Medical Volunteer", avatar: "https://ui-avatars.com/api/?name=Maria+Santos&background=3B82F6&color=fff", online: true },
-    { name: "Juan dela Cruz", role: "Food Distribution", avatar: "https://ui-avatars.com/api/?name=Juan+Cruz&background=10B981&color=fff", online: true },
-    { name: "Ana Reyes", role: "School Supplies", avatar: "https://ui-avatars.com/api/?name=Ana+Reyes&background=8B5CF6&color=fff", online: false },
-    { name: "Pedro Mendoza", role: "Transport Aid", avatar: "https://ui-avatars.com/api/?name=Pedro+Mendoza&background=F59E0B&color=fff", online: true },
-  ];
+function RecentMembers() {
+  const { users, loading } = useRecentUsers(6);
+  const { startChat } = useChats();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const handleMessage = async (uid: string) => {
+    if (!user) { setLocation("/login"); return; }
+    await startChat(uid);
+    setLocation("/messages");
+  };
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
-      <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3">Active Volunteers</h3>
-      <div className="space-y-3">
-        {volunteers.map((v) => (
-          <div key={v.name} className="flex items-center gap-3">
-            <div className="relative">
-              <img src={v.avatar} alt={v.name} className="w-9 h-9 rounded-full object-cover" />
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-gray-900 ${v.online ? "bg-green-500" : "bg-gray-400"}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{v.name}</p>
-              <p className="text-xs text-gray-500">{v.role}</p>
-            </div>
-            <span className={`ml-auto text-xs ${v.online ? "text-green-500" : "text-gray-400"}`}>
-              {v.online ? "Online" : "Offline"}
-            </span>
-          </div>
-        ))}
-      </div>
+      <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3">Community Members</h3>
+
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+        </div>
+      ) : users.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-3">
+          No members yet. Sign up to be the first!
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {users
+            .filter((u) => u.uid !== user?.uid)
+            .map((member) => (
+              <div key={member.uid} className="flex items-center gap-3">
+                <img
+                  src={member.avatar}
+                  alt={member.name}
+                  className="w-9 h-9 rounded-full object-cover shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{member.name}</p>
+                  {member.location && (
+                    <p className="text-xs text-gray-500 truncate">{member.location}</p>
+                  )}
+                </div>
+                {user && user.uid !== member.uid && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="w-7 h-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 shrink-0"
+                    onClick={() => handleMessage(member.uid)}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

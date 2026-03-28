@@ -1,4 +1,5 @@
 import { Utensils, Stethoscope, Car, BookOpen, Droplets, Home, Shirt, Zap } from "lucide-react";
+import { useCategoryPostCounts } from "@/hooks/useCommunityData";
 
 interface Props {
   onCategorySelect?: (cat: string) => void;
@@ -6,19 +7,21 @@ interface Props {
 }
 
 const categories = [
-  { id: "Food & Groceries", label: "Food & Groceries", icon: Utensils, color: "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400", count: "120+ posts" },
-  { id: "Health & Medical", label: "Health & Medical", icon: Stethoscope, color: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400", count: "89+ posts" },
-  { id: "Transportation", label: "Transportation", icon: Car, color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400", count: "65+ posts" },
-  { id: "School & Supplies", label: "School & Supplies", icon: BookOpen, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400", count: "78+ posts" },
-  { id: "Flood Relief", label: "Flood Relief", icon: Droplets, color: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400", count: "45+ posts" },
-  { id: "Shelter", label: "Shelter", icon: Home, color: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400", count: "32+ posts" },
-  { id: "Clothing", label: "Clothing", icon: Shirt, color: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400", count: "54+ posts" },
-  { id: "Utilities", label: "Utilities", icon: Zap, color: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400", count: "28+ posts" },
+  { id: "Food & Groceries", label: "Food & Groceries", icon: Utensils, color: "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" },
+  { id: "Health & Medical", label: "Health & Medical", icon: Stethoscope, color: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" },
+  { id: "Transportation", label: "Transportation", icon: Car, color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" },
+  { id: "School & Supplies", label: "School & Supplies", icon: BookOpen, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" },
+  { id: "Flood Relief", label: "Flood Relief", icon: Droplets, color: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400" },
+  { id: "Shelter", label: "Shelter", icon: Home, color: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" },
+  { id: "Clothing", label: "Clothing", icon: Shirt, color: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" },
+  { id: "Utilities", label: "Utilities", icon: Zap, color: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" },
 ];
 
 export const CATEGORIES = categories.map(c => c.id);
 
 export default function CategoryBrowser({ onCategorySelect, selected }: Props) {
+  const { counts } = useCategoryPostCounts();
+
   return (
     <section>
       <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Browse by Category</h2>
@@ -26,6 +29,8 @@ export default function CategoryBrowser({ onCategorySelect, selected }: Props) {
         {categories.map((cat) => {
           const Icon = cat.icon;
           const isSelected = selected === cat.id;
+          const count = counts[cat.id] || 0;
+
           return (
             <button
               key={cat.id}
@@ -41,7 +46,9 @@ export default function CategoryBrowser({ onCategorySelect, selected }: Props) {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight">{cat.label}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{cat.count}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {count === 0 ? "No posts yet" : `${count} ${count === 1 ? "post" : "posts"}`}
+                </p>
               </div>
             </button>
           );
