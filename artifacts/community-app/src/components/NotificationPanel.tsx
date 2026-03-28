@@ -5,8 +5,8 @@ import { useEffect, useRef } from "react";
 
 interface Props { onClose: () => void; }
 
-function timeAgo(seconds: number) {
-  const diff = Math.floor(Date.now() / 1000) - seconds;
+function timeAgo(ms: number) {
+  const diff = Math.floor((Date.now() - ms) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -68,7 +68,7 @@ export default function NotificationPanel({ onClose }: Props) {
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.body}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {n.createdAt ? timeAgo(n.createdAt.seconds) : "recently"}
+                  {n.createdAt ? timeAgo(n.createdAt) : "recently"}
                 </p>
               </div>
               {!n.read && <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}

@@ -1,8 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  collection, query, onSnapshot, addDoc, updateDoc, doc,
-  serverTimestamp, where, orderBy,
-} from "firebase/firestore";
+import { ref, onValue, push, update, query, orderByChild, limitToLast } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,7 +10,7 @@ export interface Notification {
   title: string;
   body: string;
   read: boolean;
-  createdAt: { seconds: number } | null;
+  createdAt: number;
   link?: string;
 }
 
@@ -24,32 +21,49 @@ export function useNotifications() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, "notifications"),
-      where("uid", "==", user.uid),
-      orderBy("createdAt", "desc")
+    const notifRef = query(
+      ref(db, `notifications/${user.uid}`),
+      orderByChild("createdAt"),
+      limitToLast(30)
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const notifs = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Notification[];
-      setNotifications(notifs);
-      setUnreadCount(notifs.filter((n) => !n.read).length);
+    const unsub = onValue(notifRef, (snap) => {
+      const data: Notification[] = [];
+      snap.forEach((child) => {
+        data.push({ id: child.key!, uid: user.uid, ...child.val() });
+      });
+      const sorted = data.reverse();
+      setNotifications(sorted);
+      setUnreadCount(sorted.filter((n) => !n.read).length);
     });
-    return unsub;
+    return () => unsub();
   }, [user]);
 
   const markAsRead = async (id: string) => {
-    await updateDoc(doc(db, "notifications", id), { read: true });
+    if (!user) return;
+    await update(ref(db, `notifications/${user.uid}/${id}`), { read: true });
   };
 
   const markAllAsRead = async () => {
+    if (!user) return;
     for (const n of notifications.filter((n) => !n.read)) {
-      await updateDoc(doc(db, "notifications", n.id), { read: true });
+      await update(ref(db, `notifications/${user.uid}/${n.id}`), { read: true });
     }
   };
 
-  const addNotification = async (uid: string, type: Notification["type"], title: string, body: string, link?: string) => {
-    await addDoc(collection(db, "notifications"), {
-      uid, type, title, body, read: false, createdAt: serverTimestamp(), link: link || null,
+  const addNotification = async (
+    uid: string,
+    type: Notification["type"],
+    title: string,
+    body: string,
+    link?: string
+  ) => {
+    await push(ref(db, `notifications/${uid}`), {
+      type,
+      title,
+      body,
+      read: false,
+      createdAt: Date.now(),
+      link: link || null,
     });
   };
 

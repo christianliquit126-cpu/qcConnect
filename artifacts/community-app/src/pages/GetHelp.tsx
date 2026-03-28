@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Loader2, Plus, MapPin, Clock, CheckCircle, AlertCircle, Trash2 } from "lucide-react";
 import { CATEGORIES } from "@/components/CategoryBrowser";
 
-function timeAgo(seconds: number) {
-  const diff = Math.floor(Date.now() / 1000) - seconds;
+function timeAgo(ms: number) {
+  const diff = Math.floor((Date.now() - ms) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -147,7 +147,7 @@ export default function GetHelp() {
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">{req.description}</p>
                           <div className="flex items-center gap-4 text-xs text-gray-400 flex-wrap">
                             <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {req.location || "Not specified"}</span>
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {req.createdAt ? timeAgo(req.createdAt.seconds) : "recently"}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {req.createdAt ? timeAgo(req.createdAt) : "recently"}</span>
                             <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-full">{req.category}</span>
                           </div>
                         </div>

@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import {
-  collection, query, onSnapshot, addDoc, serverTimestamp,
-  orderBy, where, doc, setDoc, getDoc, getDocs, updateDoc,
-} from "firebase/firestore";
+  ref, onValue, push, set, get, update, query,
+  orderByChild, limitToLast,
+} from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -10,24 +10,22 @@ export interface ChatMessage {
   id: string;
   uid: string;
   content: string;
-  timestamp: { seconds: number } | null;
+  timestamp: number;
 }
 
 export interface ChatUser {
   uid: string;
   name: string;
   avatar: string;
-  online?: boolean;
-  lastSeen?: { seconds: number } | null;
+  location?: string;
 }
 
 export interface Chat {
   chatId: string;
-  participants: string[];
+  participants: Record<string, boolean>;
   lastMessage?: string;
-  lastMessageTime?: { seconds: number } | null;
+  lastMessageTime?: number;
   otherUser?: ChatUser;
-  unreadCount?: number;
 }
 
 export function useChats() {
@@ -37,40 +35,50 @@ export function useChats() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
-    const unsub = onSnapshot(q, async (snap) => {
-      const chatData: Chat[] = [];
-      for (const d of snap.docs) {
-        const data = d.data();
-        const otherUid = data.participants.find((p: string) => p !== user.uid);
-        let otherUser: ChatUser | undefined;
-        if (otherUid) {
-          const userSnap = await getDoc(doc(db, "users", otherUid));
-          if (userSnap.exists()) {
-            otherUser = { uid: otherUid, ...userSnap.data() } as ChatUser;
+    const chatsRef = ref(db, "chats");
+    const unsub = onValue(chatsRef, async (snap) => {
+      const myChats: Chat[] = [];
+      const promises: Promise<void>[] = [];
+
+      snap.forEach((child) => {
+        const data = child.val();
+        if (data.participants && data.participants[user.uid]) {
+          const otherUid = Object.keys(data.participants).find((uid) => uid !== user.uid);
+          const chat: Chat = { chatId: child.key!, ...data };
+
+          if (otherUid) {
+            const p = get(ref(db, `users/${otherUid}`)).then((userSnap) => {
+              if (userSnap.exists()) {
+                chat.otherUser = { uid: otherUid, ...userSnap.val() };
+              }
+            });
+            promises.push(p);
           }
+          myChats.push(chat);
         }
-        chatData.push({ chatId: d.id, ...data, otherUser } as Chat);
-      }
-      chatData.sort((a, b) => {
-        const at = a.lastMessageTime?.seconds || 0;
-        const bt = b.lastMessageTime?.seconds || 0;
-        return bt - at;
       });
-      setChats(chatData);
+
+      await Promise.all(promises);
+      myChats.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
+      setChats([...myChats]);
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, [user]);
 
   const startChat = async (otherUid: string): Promise<string> => {
     if (!user) throw new Error("Not authenticated");
     const participants = [user.uid, otherUid].sort();
     const chatId = participants.join("_");
-    const ref = doc(db, "chats", chatId);
-    const snap = await getDoc(ref);
+    const chatRef = ref(db, `chats/${chatId}`);
+    const snap = await get(chatRef);
     if (!snap.exists()) {
-      await setDoc(ref, { participants, createdAt: serverTimestamp(), lastMessage: "", lastMessageTime: null });
+      await set(chatRef, {
+        participants: { [user.uid]: true, [otherUid]: true },
+        lastMessage: "",
+        lastMessageTime: Date.now(),
+        createdAt: Date.now(),
+      });
     }
     return chatId;
   };
@@ -80,51 +88,52 @@ export function useChats() {
 
 export function useChatMessages(chatId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [typing, setTyping] = useState(false);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
     if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ChatMessage[]);
+    const msgRef = query(ref(db, `chats/${chatId}/messages`), orderByChild("timestamp"), limitToLast(100));
+    const unsub = onValue(msgRef, (snap) => {
+      const data: ChatMessage[] = [];
+      snap.forEach((child) => {
+        data.push({ id: child.key!, ...child.val() });
+      });
+      setMessages(data);
     });
-    return unsub;
+    return () => unsub();
   }, [chatId]);
 
   useEffect(() => {
     if (!chatId || !user) return;
-    const ref = doc(db, "chats", chatId);
-    const unsub = onSnapshot(ref, (snap) => {
-      const data = snap.data();
-      if (data?.typing && data.typing !== user.uid) {
-        setTyping(!!data.typingActive);
-      } else {
-        setTyping(false);
-      }
+    const typingRef = ref(db, `chats/${chatId}/typing`);
+    const unsub = onValue(typingRef, (snap) => {
+      if (!snap.exists()) { setTypingUser(null); return; }
+      const typingData = snap.val() as Record<string, boolean>;
+      const others = Object.entries(typingData)
+        .filter(([uid, active]) => uid !== user.uid && active)
+        .map(([uid]) => uid);
+      setTypingUser(others.length > 0 ? others[0] : null);
     });
-    return unsub;
+    return () => unsub();
   }, [chatId, user]);
 
   const sendMessage = async (content: string) => {
     if (!user || !chatId) return;
-    const ref = collection(db, "chats", chatId, "messages");
-    await addDoc(ref, { uid: user.uid, content, timestamp: serverTimestamp() });
-    await updateDoc(doc(db, "chats", chatId), {
+    const msgRef = ref(db, `chats/${chatId}/messages`);
+    await push(msgRef, { uid: user.uid, content, timestamp: Date.now() });
+    await update(ref(db, `chats/${chatId}`), {
       lastMessage: content,
-      lastMessageTime: serverTimestamp(),
+      lastMessageTime: Date.now(),
     });
   };
 
   const setTypingIndicator = async (isTyping: boolean) => {
     if (!user || !chatId) return;
-    await updateDoc(doc(db, "chats", chatId), {
-      typing: user.uid,
-      typingActive: isTyping,
-    });
+    await update(ref(db, `chats/${chatId}/typing`), { [user.uid]: isTyping });
   };
 
-  return { messages, typing, sendMessage, setTypingIndicator };
+  return { messages, typingUser, sendMessage, setTypingIndicator };
 }
 
 export function useUsers() {
@@ -132,12 +141,17 @@ export function useUsers() {
   const { user } = useAuth();
 
   useEffect(() => {
-    const q = query(collection(db, "users"));
-    const unsub = onSnapshot(q, (snap) => {
-      const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() })) as ChatUser[];
-      setUsers(allUsers.filter((u) => u.uid !== user?.uid));
+    const usersRef = ref(db, "users");
+    const unsub = onValue(usersRef, (snap) => {
+      const all: ChatUser[] = [];
+      snap.forEach((child) => {
+        if (child.key !== user?.uid) {
+          all.push({ uid: child.key!, ...child.val() });
+        }
+      });
+      setUsers(all);
     });
-    return unsub;
+    return () => unsub();
   }, [user]);
 
   return { users };

@@ -47,7 +47,7 @@ export default function CommunityUpdates() {
                 <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5">{update.title}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">{update.desc}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {update.createdAt ? timeAgo(update.createdAt.seconds) : "recently"}
+                  {update.createdAt ? timeAgo(update.createdAt) : "recently"}
                   {update.location ? ` · ${update.location}` : ""}
                 </p>
               </div>

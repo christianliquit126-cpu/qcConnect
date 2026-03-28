@@ -1,8 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, where,
-} from "firebase/firestore";
+import { ref, onValue, push, update, remove, query, orderByChild, limitToLast } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -18,7 +15,7 @@ export interface HelpRequest {
   category: string;
   location: string;
   status: HelpStatus;
-  createdAt: { seconds: number } | null;
+  createdAt: number;
 }
 
 export function useHelpRequests(filterUid?: string) {
@@ -27,15 +24,19 @@ export function useHelpRequests(filterUid?: string) {
   const { user, userProfile } = useAuth();
 
   useEffect(() => {
-    let q = query(collection(db, "helpRequests"), orderBy("createdAt", "desc"));
-    if (filterUid) {
-      q = query(collection(db, "helpRequests"), where("uid", "==", filterUid), orderBy("createdAt", "desc"));
-    }
-    const unsub = onSnapshot(q, (snap) => {
-      setRequests(snap.docs.map((d) => ({ requestId: d.id, ...d.data() })) as HelpRequest[]);
+    const reqRef = query(ref(db, "helpRequests"), orderByChild("createdAt"), limitToLast(100));
+    const unsub = onValue(reqRef, (snap) => {
+      const data: HelpRequest[] = [];
+      snap.forEach((child) => {
+        const req = { requestId: child.key!, ...child.val() } as HelpRequest;
+        if (!filterUid || req.uid === filterUid) {
+          data.push(req);
+        }
+      });
+      setRequests(data.reverse());
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, [filterUid]);
 
   const createRequest = async (data: {
@@ -45,22 +46,22 @@ export function useHelpRequests(filterUid?: string) {
     location: string;
   }) => {
     if (!user || !userProfile) return;
-    await addDoc(collection(db, "helpRequests"), {
+    await push(ref(db, "helpRequests"), {
       uid: user.uid,
       authorName: userProfile.name,
       authorAvatar: userProfile.avatar,
       ...data,
       status: "Pending" as HelpStatus,
-      createdAt: serverTimestamp(),
+      createdAt: Date.now(),
     });
   };
 
   const updateStatus = async (requestId: string, status: HelpStatus) => {
-    await updateDoc(doc(db, "helpRequests", requestId), { status });
+    await update(ref(db, `helpRequests/${requestId}`), { status });
   };
 
   const deleteRequest = async (requestId: string) => {
-    await deleteDoc(doc(db, "helpRequests", requestId));
+    await remove(ref(db, `helpRequests/${requestId}`));
   };
 
   return { requests, loading, createRequest, updateStatus, deleteRequest };

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
-function timeAgo(seconds: number) {
-  const diff = Math.floor(Date.now() / 1000) - seconds;
+function timeAgo(ms: number) {
+  const diff = Math.floor((Date.now() - ms) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -26,7 +26,7 @@ export default function PostCard({ post, onLike, onDelete }: Props) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const liked = user ? post.likes.includes(user.uid) : false;
+  const liked = user ? !!(post.likes?.[user.uid]) : false;
   const isOwner = user?.uid === post.uid;
 
   const handleComment = async (e: React.FormEvent) => {
@@ -64,7 +64,7 @@ export default function PostCard({ post, onLike, onDelete }: Props) {
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{post.authorName}</p>
               <p className="text-xs text-gray-400">
-                {post.createdAt ? timeAgo(post.createdAt.seconds) : "recently"}
+                {post.createdAt ? timeAgo(post.createdAt) : "recently"}
               </p>
             </div>
           </div>

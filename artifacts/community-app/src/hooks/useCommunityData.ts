@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  collection, query, onSnapshot, orderBy, limit, where, getDocs,
-} from "firebase/firestore";
+import { ref, onValue, query, orderByChild, limitToLast, equalTo } from "firebase/database";
 import { db } from "@/lib/firebase";
 
 export interface RecentUser {
@@ -9,32 +7,18 @@ export interface RecentUser {
   name: string;
   avatar: string;
   location?: string;
-  createdAt?: { seconds: number } | null;
-}
-
-export interface CategoryCount {
-  category: string;
-  count: number;
+  createdAt?: number;
 }
 
 export interface CommunityUpdate {
   id: string;
-  type: "help_request" | "post";
   tag: string;
   tagColor: string;
   title: string;
   desc: string;
   location?: string;
-  createdAt: { seconds: number } | null;
+  createdAt: number;
   authorName: string;
-}
-
-function timeAgo(seconds: number) {
-  const diff = Math.floor(Date.now() / 1000) - seconds;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 function getCategoryTag(category: string): { tag: string; tagColor: string } {
@@ -56,52 +40,49 @@ export function useCommunityUpdates() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "helpRequests"),
-      where("status", "==", "Pending"),
-      orderBy("createdAt", "desc"),
-      limit(5)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const items: CommunityUpdate[] = snap.docs.map((d) => {
-        const data = d.data();
-        const { tag, tagColor } = getCategoryTag(data.category);
-        return {
-          id: d.id,
-          type: "help_request",
-          tag,
-          tagColor,
-          title: data.title,
-          desc: data.description,
-          location: data.location || "",
-          createdAt: data.createdAt,
-          authorName: data.authorName,
-        };
+    const reqRef = query(ref(db, "helpRequests"), orderByChild("createdAt"), limitToLast(10));
+    const unsub = onValue(reqRef, (snap) => {
+      const items: CommunityUpdate[] = [];
+      snap.forEach((child) => {
+        const data = child.val();
+        if (data.status === "Pending") {
+          const { tag, tagColor } = getCategoryTag(data.category);
+          items.push({
+            id: child.key!,
+            tag,
+            tagColor,
+            title: data.title,
+            desc: data.description,
+            location: data.location || "",
+            createdAt: data.createdAt,
+            authorName: data.authorName,
+          });
+        }
       });
-      setUpdates(items);
+      setUpdates(items.reverse().slice(0, 5));
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, []);
 
   return { updates, loading };
 }
 
-export function useRecentUsers(count = 5) {
+export function useRecentUsers(count = 6) {
   const [users, setUsers] = useState<RecentUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "users"),
-      orderBy("createdAt", "desc"),
-      limit(count)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() })) as RecentUser[]);
+    const usersRef = query(ref(db, "users"), orderByChild("createdAt"), limitToLast(count));
+    const unsub = onValue(usersRef, (snap) => {
+      const data: RecentUser[] = [];
+      snap.forEach((child) => {
+        data.push({ uid: child.key!, ...child.val() });
+      });
+      setUsers(data.reverse());
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, [count]);
 
   return { users, loading };
@@ -112,17 +93,17 @@ export function useCategoryPostCounts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, "posts"));
-    const unsub = onSnapshot(q, (snap) => {
+    const postsRef = ref(db, "posts");
+    const unsub = onValue(postsRef, (snap) => {
       const map: Record<string, number> = {};
-      snap.docs.forEach((d) => {
-        const cat = d.data().category as string;
+      snap.forEach((child) => {
+        const cat = child.val().category as string;
         if (cat) map[cat] = (map[cat] || 0) + 1;
       });
       setCounts(map);
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, []);
 
   return { counts, loading };

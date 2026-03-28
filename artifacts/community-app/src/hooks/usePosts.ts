@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import {
-  collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, arrayUnion, arrayRemove, serverTimestamp, where, getDocs,
-} from "firebase/firestore";
+  ref, onValue, push, update, remove, get,
+  query, orderByChild, limitToLast,
+} from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,7 +13,7 @@ export interface Comment {
   authorName: string;
   authorAvatar: string;
   content: string;
-  createdAt: unknown;
+  createdAt: number;
 }
 
 export interface Post {
@@ -24,9 +24,9 @@ export interface Post {
   content: string;
   imageURL?: string;
   category: string;
-  likes: string[];
+  likes: Record<string, boolean>;
   commentCount: number;
-  createdAt: { seconds: number } | null;
+  createdAt: number;
 }
 
 export function usePosts(category?: string) {
@@ -35,43 +35,55 @@ export function usePosts(category?: string) {
   const { user, userProfile } = useAuth();
 
   useEffect(() => {
-    let q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    if (category && category !== "All") {
-      q = query(collection(db, "posts"), where("category", "==", category), orderBy("createdAt", "desc"));
-    }
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => ({ postId: d.id, ...d.data() })) as Post[];
-      setPosts(data);
+    const postsRef = query(ref(db, "posts"), orderByChild("createdAt"), limitToLast(50));
+    const unsub = onValue(postsRef, (snap) => {
+      const data: Post[] = [];
+      snap.forEach((child) => {
+        const post = { postId: child.key!, ...child.val() } as Post;
+        if (!category || category === "All" || post.category === category) {
+          data.push(post);
+        }
+      });
+      setPosts(data.reverse());
       setLoading(false);
     });
-    return unsub;
+    return () => unsub();
   }, [category]);
 
-  const createPost = async (content: string, category: string, imageURL?: string) => {
+  const createPost = async (content: string, cat: string, imageURL?: string) => {
     if (!user || !userProfile) return;
-    await addDoc(collection(db, "posts"), {
+    const newPost = {
       uid: user.uid,
       authorName: userProfile.name,
       authorAvatar: userProfile.avatar,
       content,
       imageURL: imageURL || null,
-      category,
-      likes: [],
+      category: cat,
+      likes: {},
       commentCount: 0,
-      createdAt: serverTimestamp(),
-    });
+      createdAt: Date.now(),
+    };
+    await push(ref(db, "posts"), newPost);
   };
 
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
-    const ref = doc(db, "posts", postId);
-    await updateDoc(ref, {
-      likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid),
-    });
+    const likeRef = ref(db, `posts/${postId}/likes/${user.uid}`);
+    if (liked) {
+      await remove(likeRef);
+    } else {
+      await update(ref(db, `posts/${postId}/likes`), { [user.uid]: true });
+    }
   };
 
   const deletePost = async (postId: string) => {
-    await deleteDoc(doc(db, "posts", postId));
+    await remove(ref(db, `posts/${postId}`));
+    const commentsSnap = await get(query(ref(db, "comments"), orderByChild("postId")));
+    commentsSnap.forEach((child) => {
+      if (child.val().postId === postId) {
+        remove(child.ref);
+      }
+    });
   };
 
   return { posts, loading, createPost, toggleLike, deletePost };
@@ -83,30 +95,35 @@ export function useComments(postId: string) {
 
   useEffect(() => {
     if (!postId) return;
-    const q = query(collection(db, "comments"), where("postId", "==", postId), orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setComments(snap.docs.map((d) => ({ commentId: d.id, ...d.data() })) as Comment[]);
+    const commentsRef = query(ref(db, `comments/${postId}`), orderByChild("createdAt"));
+    const unsub = onValue(commentsRef, (snap) => {
+      const data: Comment[] = [];
+      snap.forEach((child) => {
+        data.push({ commentId: child.key!, postId, ...child.val() });
+      });
+      setComments(data);
     });
-    return unsub;
+    return () => unsub();
   }, [postId]);
 
   const addComment = async (content: string) => {
     if (!user || !userProfile) return;
-    await addDoc(collection(db, "comments"), {
+    await push(ref(db, `comments/${postId}`), {
       postId,
       uid: user.uid,
       authorName: userProfile.name,
       authorAvatar: userProfile.avatar,
       content,
-      createdAt: serverTimestamp(),
+      createdAt: Date.now(),
     });
-    await updateDoc(doc(db, "posts", postId), {
-      commentCount: (await getDocs(query(collection(db, "comments"), where("postId", "==", postId)))).size + 1,
-    });
+    const snap = await get(ref(db, `comments/${postId}`));
+    await update(ref(db, `posts/${postId}`), { commentCount: snap.size });
   };
 
   const deleteComment = async (commentId: string) => {
-    await deleteDoc(doc(db, "comments", commentId));
+    await remove(ref(db, `comments/${postId}/${commentId}`));
+    const snap = await get(ref(db, `comments/${postId}`));
+    await update(ref(db, `posts/${postId}`), { commentCount: snap.size });
   };
 
   return { comments, addComment, deleteComment };

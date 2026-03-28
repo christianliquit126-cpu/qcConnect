@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-function timeAgo(seconds: number) {
-  const diff = Math.floor(Date.now() / 1000) - seconds;
+function timeAgo(ms: number) {
+  const diff = Math.floor((Date.now() - ms) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -118,7 +118,7 @@ export default function Messages() {
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{chat.otherUser?.name}</p>
                         <p className="text-xs text-gray-400 shrink-0 ml-2">
-                          {chat.lastMessageTime ? timeAgo(chat.lastMessageTime.seconds) : ""}
+                          {chat.lastMessageTime ? timeAgo(chat.lastMessageTime) : ""}
                         </p>
                       </div>
                       <p className="text-xs text-gray-500 truncate">{chat.lastMessage || "Start a conversation"}</p>
@@ -165,7 +165,7 @@ interface ChatViewProps {
 }
 
 function ChatView({ chatId, otherUser, onBack, currentUserId, currentUserAvatar }: ChatViewProps) {
-  const { messages, typing, sendMessage, setTypingIndicator } = useChatMessages(chatId);
+  const { messages, typingUser, sendMessage, setTypingIndicator } = useChatMessages(chatId);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -201,7 +201,7 @@ function ChatView({ chatId, otherUser, onBack, currentUserId, currentUserAvatar 
         <img src={otherUser?.avatar || ""} alt="" className="w-9 h-9 rounded-full object-cover" />
         <div>
           <p className="font-semibold text-sm text-gray-900 dark:text-white">{otherUser?.name}</p>
-          {typing && <p className="text-xs text-green-500">typing...</p>}
+          {typingUser && <p className="text-xs text-green-500">typing...</p>}
         </div>
       </div>
 

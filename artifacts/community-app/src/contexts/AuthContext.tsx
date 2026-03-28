@@ -1,25 +1,19 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import {
-  User,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  GoogleAuthProvider,
-  FacebookAuthProvider,
-  signInWithPopup,
-  updateProfile,
+  User, onAuthStateChanged, signInWithEmailAndPassword,
+  createUserWithEmailAndPassword, signOut, GoogleAuthProvider,
+  FacebookAuthProvider, signInWithPopup, updateProfile,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { ref, set, get, update } from "firebase/database";
 import { auth, db } from "@/lib/firebase";
 
-interface UserProfile {
+export interface UserProfile {
   uid: string;
   name: string;
   email: string;
   avatar: string;
   location: string;
-  createdAt: unknown;
+  createdAt: number;
 }
 
 interface AuthContextType {
@@ -42,38 +36,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        const ref = doc(db, "users", u.uid);
-        const snap = await getDoc(ref);
+        const snap = await get(ref(db, `users/${u.uid}`));
         if (snap.exists()) {
-          setUserProfile(snap.data() as UserProfile);
+          setUserProfile(snap.val() as UserProfile);
         }
       } else {
         setUserProfile(null);
       }
       setLoading(false);
     });
-    return unsubscribe;
+    return unsub;
   }, []);
 
   const createUserDoc = async (u: User, name?: string) => {
-    const ref = doc(db, "users", u.uid);
-    const snap = await getDoc(ref);
+    const snap = await get(ref(db, `users/${u.uid}`));
     if (!snap.exists()) {
+      const displayName = name || u.displayName || "Anonymous";
       const profile: UserProfile = {
         uid: u.uid,
-        name: name || u.displayName || "Anonymous",
+        name: displayName,
         email: u.email || "",
-        avatar: u.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(name || u.displayName || "U")}&background=3B82F6&color=fff`,
+        avatar: u.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=3B82F6&color=fff`,
         location: "",
-        createdAt: serverTimestamp(),
+        createdAt: Date.now(),
       };
-      await setDoc(ref, profile);
+      await set(ref(db, `users/${u.uid}`), profile);
       setUserProfile(profile);
     } else {
-      setUserProfile(snap.data() as UserProfile);
+      setUserProfile(snap.val() as UserProfile);
     }
   };
 
@@ -88,14 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const cred = await signInWithPopup(auth, provider);
+    const cred = await signInWithPopup(auth, new GoogleAuthProvider());
     await createUserDoc(cred.user);
   };
 
   const loginWithFacebook = async () => {
-    const provider = new FacebookAuthProvider();
-    const cred = await signInWithPopup(auth, provider);
+    const cred = await signInWithPopup(auth, new FacebookAuthProvider());
     await createUserDoc(cred.user);
   };
 
@@ -105,8 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUserProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
-    const ref = doc(db, "users", user.uid);
-    await setDoc(ref, data, { merge: true });
+    await update(ref(db, `users/${user.uid}`), data);
     setUserProfile((prev) => prev ? { ...prev, ...data } : null);
   };
 
