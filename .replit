@@ -39,3 +39,15 @@ VITE_FIREBASE_MEASUREMENT_ID = "G-S5T58FWSTB"
 
 [nix]
 channel = "stable-25_05"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 25876
+externalPort = 80
